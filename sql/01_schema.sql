@@ -4,7 +4,6 @@
 DROP TABLE IF EXISTS readings, sensors, transformers, staging CASCADE;
 
 -- RAW
-
 -- Input table, data staging
 CREATE TABLE staging (
     input_data jsonb
