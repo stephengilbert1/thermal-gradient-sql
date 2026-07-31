@@ -1,73 +1,65 @@
-# Peak-2-Peak: Thermal Gradient Analysis in SQL
+# Vertical Temperature Gradient Analysis in SQL
 
-Vertical temperature gradient analysis of oil-filled transformers, rebuilt in PostgreSQL.
+Characterizing how oil temperature varies from bottom to top in oil-filled transformers, rebuilt in PostgreSQL from raw JSON telemetry. This is a SQL port of an earlier pandas analysis, done to develop analytical SQL against a real dataset.
 
-> Placeholder README. Sections marked TODO get written once the analysis is validated.
+## The finding
 
-## Overview
+Oil temperature increases steadily from the bottom of the tank to the top across all four transformers. This is consistent with normal convective circulation. The size of the increase varies by transformer from roughly 1.1 to 1.7°C per inch of oil.
 
-Four transformers were monitored in Newfoundland from January to June 2026. Each unit carries a
-16-thermistor vertical array reading the oil temperature from the bottom of the oil column to the
-top at 0.25 inch spacing. This project models that data in PostgreSQL and quantifies the vertical
-thermal gradient using analytical SQL.
+This SQL rebuild reproduces the per-transformer gradient figures from the original pandas analysis. Reproducing that result was the point. It is the proof the rebuild is faithful.
 
-The work was first done in Python and pandas. This version rebuilds it in SQL to demonstrate
-schema design, bulk ingestion and analytical queries against a real dataset.
+## Why SQL
 
-TODO: one paragraph on the headline finding once reproduced in SQL.
+The analysis already exists in pandas. This version rebuilds it in PostgreSQL to show the same result reached a different way. The parts a notebook workflow never touches are the interesting parts here. Modelling the data into proper tables. Loading a million rows off raw files. Doing the transformation and the analysis in SQL rather than a DataFrame.
 
-## Finding
+## The data
 
-TODO: short outcome-framed summary. Lead with the number. The pandas result to reproduce is the
-mean vertical gradient per transformer in degrees C per inch.
+Four transformers (0002180, 0002181, 0002184, 0002190), Jan-Jun 2026. Each has 16 thermistors, TX_00 at the bottom of the oil volume to TX_15 at the top, spaced 0.25" apart, logged as JSON. Roughly 924,000 readings, which explode to 14.8 million positioned rows once each 16-element array is unpacked.
 
-## Approach
+Raw data is excluded from this repository due to confidentiality. The schema, loader and queries are shown in full. The pipeline is reproducible against equivalent data.
 
-Structured along staging then model then analysis lines, the standard analytics-engineering
-layering, implemented in plain SQL rather than a framework.
+## One hardware issue corrected in the transform
 
-- Raw JSON lands whole in a staging table, one object per row.
-- SQL transforms staging into a normalised model of transformers, sensors and readings.
-- Analytical queries compute the gradients, deltas and time-of-day patterns.
+**0002181** was physically installed with its sensor array upside down. This was confirmed on site. It shows up as the only transformer with a negative gradient where the other three are positive. It is corrected in the load step by flipping the position index for that unit only, so the modelled data is canonical and every downstream query treats all four transformers the same. The correction lives in one place rather than being repeated in every query.
 
-## Tech stack
+## How it's put together
 
-- PostgreSQL, running in Docker for reproducibility (version pinned in `docker-compose.yml`)
-- SQL for all transformation and analysis
-- Bash loader script for bulk ingest via COPY
+The project follows a staging then model then analysis layering. Raw JSON lands untouched, SQL transforms it into a clean relational model, and the analysis runs on that model.
+
+1. **Schema** (`sql/01_schema.sql`). A staging table for raw JSON, then three modelled tables. `transformers` is the spine. `sensors` is a position to height lookup with a submerged flag. `readings` is the fact table, one row per sensor per timestamp, with foreign keys back to the other two.
+2. **Ingest** (`scripts/load.sh`). Finds every source file, reshapes each pretty-printed JSON array into one object per line with `jq`, and streams it into staging with `COPY`.
+3. **Transform** (`sql/02_load.sql`). Explodes each JSON temperature array into 16 positioned rows using `jsonb_array_elements WITH ORDINALITY`, converts the epoch timestamp, applies the 0002181 correction, and populates the model.
+4. **Analysis** (`sql/03_analysis/`). Queries against the modelled tables. The gradient validation query joins readings to sensors to compute the per-transformer bottom-to-top gradient and reproduces the pandas result.
+
+## Running it
+
+Postgres runs in Docker so the whole thing is reproducible.
+
+1. Copy `.env.example` to `.env` and set a password
+2. `docker compose up -d` to start Postgres
+3. `docker compose exec -T db psql -U <user> -d <db> -f /sql/01_schema.sql` to build the tables
+4. `./scripts/load.sh` to ingest the raw data into staging
+5. `docker compose exec -T db psql -U <user> -d <db> -f /sql/02_load.sql` to transform staging into the model
+6. run the queries in `sql/03_analysis/`
 
 ## Structure
 
 ```
-peak2peak-sql/
-  docker-compose.yml     reproducible Postgres instance
-  .env.example           template for local credentials
-  sql/
-    01_schema.sql        staging table plus the three modelled tables
-    02_load.sql          transform staging into readings
-    03_analysis/         analytical queries, numbered
-  scripts/
-    load.sh              loop over the raw files, COPY each
-  data/                  raw JSON (gitignored, not shipped)
-  README.md
+docker-compose.yml     reproducible Postgres instance
+.env.example           template for local credentials
+sql/
+  01_schema.sql        staging table plus the three modelled tables
+  02_load.sql          transform staging into the model
+  03_analysis/         analytical queries
+scripts/
+  load.sh              reshape and load the raw files into staging
+data/                  raw JSON, excluded from the repo
 ```
 
-## Running it
+## Tools
 
-TODO: fill in once the compose file and loader exist. Rough shape:
+PostgreSQL 18 in Docker. `jq` for the JSON reshape. Bash for the loader. That is the whole stack.
 
-1. copy `.env.example` to `.env` and set a local password
-2. `docker compose up -d` to start Postgres
-3. run `sql/01_schema.sql` to build the tables
-4. run `scripts/load.sh` to ingest the raw data
-5. run `sql/02_load.sql` to transform staging into readings
-6. run the queries in `sql/03_analysis/`
+## Next
 
-## Data
-
-The raw thermistor data is IFD client IP and is not included in this repository. The schema,
-loader and queries are shown in full. Sample or anonymised data available on request.
-
-## Notes
-
-British and NZ spelling throughout.
+More analytical queries. Rate of change and moving averages using window functions. Inversion frequency broken down by time of day. A percentile view of when the gradient is steepest.

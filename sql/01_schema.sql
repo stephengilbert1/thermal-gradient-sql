@@ -1,3 +1,4 @@
+-- 01_schema.sql
 -- Set up database for thermal gradient analysis 
 
 -- Drops tables so that file is re-runnable
