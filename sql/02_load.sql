@@ -15,8 +15,12 @@ FROM generate_series(0, 15) AS n;
 
 INSERT INTO readings (device_serial, position_index, temperature, measured_at)
 SELECT s.input_data ->> 'deviceSerial',
-       t.position - 1,
+    CASE
+        WHEN s.input_data ->> 'deviceSerial' = '0002181' THEN 15 - (t.position - 1)
+        ELSE t.position - 1
+    END,
        t.temperature::numeric,
        to_timestamp((s.input_data ->> 'timestamp')::bigint)
 FROM staging AS s,
      jsonb_array_elements(s.input_data -> 'temperatures') WITH ORDINALITY AS t(temperature, position);
+
