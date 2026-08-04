@@ -1,4 +1,4 @@
--- 03_analysis.sql
+-- 01_gradient_validation.sql
 
 WITH endpoints AS (
     SELECT device_serial,

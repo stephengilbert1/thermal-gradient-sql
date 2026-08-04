@@ -1,6 +1,6 @@
 # Vertical Temperature Gradient Analysis in SQL
 
-Characterizing how oil temperature varies from bottom to top in oil-filled transformers, rebuilt in PostgreSQL from raw JSON telemetry. This is a SQL port of an earlier pandas analysis, done to develop analytical SQL against a real dataset.
+Characterizing how oil temperature varies from bottom to top in oil-filled transformers, rebuilt in PostgreSQL from raw JSON telemetry. This is a SQL port of an earlier [pandas analysis](https://github.com/stephengilbert1/thermal-gradient-analysis), done to develop analytical SQL against a real dataset.
 
 ## The finding
 
@@ -29,7 +29,10 @@ The project follows a staging then model then analysis layering. Raw JSON lands 
 1. **Schema** (`sql/01_schema.sql`). A staging table for raw JSON, then three modelled tables. `transformers` is the spine. `sensors` is a position to height lookup with a submerged flag. `readings` is the fact table, one row per sensor per timestamp, with foreign keys back to the other two.
 2. **Ingest** (`scripts/load.sh`). Finds every source file, reshapes each pretty-printed JSON array into one object per line with `jq`, and streams it into staging with `COPY`.
 3. **Transform** (`sql/02_load.sql`). Explodes each JSON temperature array into 16 positioned rows using `jsonb_array_elements WITH ORDINALITY`, converts the epoch timestamp, applies the 0002181 correction, and populates the model.
-4. **Analysis** (`sql/03_analysis/`). Queries against the modelled tables. The gradient validation query joins readings to sensors to compute the per-transformer bottom-to-top gradient and reproduces the pandas result.
+4. **Analysis** (`sql/03_analysis/`). Queries against the modelled tables, each mirroring a step from the original pandas analysis.
+   - `01_gradient_validation.sql` computes the per-transformer bottom-to-top gradient and reproduces the pandas figure. This is the check that the rebuild is faithful.
+   - `02_vertical_profile.sql` is the mean temperature at each position per transformer. It shows the steady rise through the submerged thermistors then the flattening above the oil surface, the same profile the pandas notebook plots.
+   - `03_coverage_and_gaps.sql` verifies coverage per transformer and flags gaps in the logging. It surfaces the known startup gap on 0002190.
 
 ## Running it
 
@@ -37,9 +40,9 @@ Postgres runs in Docker so the whole thing is reproducible.
 
 1. Copy `.env.example` to `.env` and set a password
 2. `docker compose up -d` to start Postgres
-3. `docker compose exec -T db psql -U <user> -d <db> -f /sql/01_schema.sql` to build the tables
+3. `docker compose exec -T db psql -U your_user -d your_db -f /sql/01_schema.sql` to build the tables
 4. `./scripts/load.sh` to ingest the raw data into staging
-5. `docker compose exec -T db psql -U <user> -d <db> -f /sql/02_load.sql` to transform staging into the model
+5. `docker compose exec -T db psql -U your_user -d your_db -f /sql/02_load.sql` to transform staging into the model
 6. run the queries in `sql/03_analysis/`
 
 ## Structure
@@ -62,4 +65,4 @@ PostgreSQL 18 in Docker. `jq` for the JSON reshape. Bash for the loader. That is
 
 ## Next
 
-More analytical queries. Rate of change and moving averages using window functions. Inversion frequency broken down by time of day. A percentile view of when the gradient is steepest.
+Error by depth using percentile functions, the measurement error analysis from the pandas notebook. Bringing the ambient and thermowell reference data into the model. Handing the reduced SQL summaries to Python for the statistical work and plotting that SQL is not suited to.
