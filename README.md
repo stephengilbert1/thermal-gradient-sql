@@ -1,8 +1,8 @@
 # Vertical Temperature Gradient Analysis in SQL
 
-A PostgreSQL pipeline that models raw transformer thermistor telemetry and quantifies the vertical temperature gradient in the oil. It ingests raw JSON, transforms it into a clean relational model and runs analytical queries against that model.
+A PostgreSQL pipeline that models raw transformer thermistor telemetry and quantifies the vertical temperature gradient in the oil. It ingests raw JSON, transforms it into a clean relational model, runs analytical queries against that model and exports a resampled dataset for downstream analysis.
 
-A companion [pandas analysis](https://github.com/stephengilbert1/thermal-gradient-analysis) covers the same data with statistical exploration and plotting. This project is the SQL side of that work: ingestion, modelling and the heavy set-based reduction.
+A companion [pandas analysis](https://github.com/stephengilbert1/thermal-gradient-analysis) covers the same data with statistical exploration and plotting. This project is the SQL side of that work: ingestion, modelling, the heavy set-based reduction and the handoff.
 
 ## Schema
 
@@ -54,10 +54,17 @@ The project follows a staging then model then analysis structure. Raw JSON lands
    - `01_gradient_validation.sql` computes the per-transformer bottom-to-top gradient.
    - `02_vertical_profile.sql` is the mean temperature at each position per transformer. It shows the steady rise through the submerged thermistors then the flattening above the oil surface.
    - `03_coverage_and_gaps.sql` verifies coverage per transformer and flags gaps in the logging. It surfaces the known startup gap on 0002190.
+5. **Export** (`sql/04_export.sql`). Resamples the readings to 15-minute intervals per transformer and position and writes the result to a CSV for the companion pandas analysis. See Handoff below.
 
-## One hardware issue corrected in the transform
+## Validation
 
-**0002181** was physically installed with its sensor array upside down. This was confirmed on site. It shows up as the only transformer with a negative gradient where the other three are positive. It is corrected in the load step by flipping the position index for that unit only and every downstream query treats all four transformers the same. The correction lives in one place rather than being repeated in every query.
+After the transform the model is checked with data quality assertions in `sql/tests/validation.sql`. Each check returns a PASS or FAIL row. They assert things the schema constraints cannot: that every staging object exploded to exactly 16 readings, that every timestamp carries a full sensor set, that positions run 0 to 15 and that temperatures sit within physically plausible bounds.
+
+## Handoff
+
+The export in step 5 is where this pipeline meets the companion pandas analysis. SQL does the heavy set-based work: ingestion, the 0002181 correction, modelling and resampling to 15-minute intervals. The result is written long, one row per transformer per interval per position, so pandas can pivot it, make the submerged-sensor cut and compute the error metric and correlations. All 16 positions are exported rather than pre-filtered to the submerged range, because which sensors sit in the oil is a conclusion the analysis reaches from the data rather than an input. The resampling interval is fixed at 15 minutes in the export.
+
+The ambient and thermowell reference data is not yet in the model, so the current export is the thermistor side of the handoff only.
 
 ## Running it
 
@@ -68,7 +75,9 @@ Postgres runs in Docker so the whole thing is reproducible.
 3. `docker compose exec -T db psql -U your_user -d your_db -f /sql/01_schema.sql` to build the tables
 4. `./scripts/load.sh` to ingest the raw data into staging
 5. `docker compose exec -T db psql -U your_user -d your_db -f /sql/02_load.sql` to transform staging into the model
-6. run the queries in `sql/03_analysis/`
+6. `docker compose exec -T db psql -U your_user -d your_db -f /sql/tests/validation.sql` to check the model
+7. run the queries in `sql/03_analysis/`
+8. `docker compose exec -T db psql -U your_user -d your_db -f /sql/04_export.sql` to write the resampled CSV to `exports/`
 
 ## Structure
 
@@ -79,9 +88,13 @@ sql/
   01_schema.sql        staging table plus the three modelled tables
   02_load.sql          transform staging into the model
   03_analysis/         reduction queries
+  04_export.sql        resample and export for the pandas handoff
+  tests/
+    validation.sql     data quality checks run after the transform
 scripts/
   load.sh              reshape and load the raw files into staging
 data/                  raw JSON, excluded from the repo
+exports/               generated CSVs, excluded from the repo
 ```
 
 ## Tools
@@ -90,4 +103,4 @@ PostgreSQL 18 in Docker. `jq` for the JSON reshape. Bash for the loader. That is
 
 ## Next
 
-Error by depth using percentile functions. Bringing the ambient and thermowell reference data into the model. Handing the reduced summaries to Python for the statistical work and plotting that SQL is not suited to which is where this pipeline meets the companion analysis.
+Error by depth using percentile functions. Bringing the ambient and thermowell reference data into the model. Handing the resampled export to Python for the statistical work and plotting that SQL is not suited to. A Makefile and a small synthetic dataset so the whole pipeline can be run from a clean clone without the confidential data.
