@@ -17,7 +17,8 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql # named volume keeps data across restarts
       - ./sql:/sql
-      - ./data:/data
+      - ./data:/data:ro
+      - ./exports:/exports
 
 volumes:
   pgdata: # declares the named volume used above
