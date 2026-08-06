@@ -1,54 +1,46 @@
-# ============================================================
-# Data: client IP. Never commit.
-# ------------------------------------------------------------
-# The raw thermistor JSON is IFD client data and stays local.
-# This whole directory is excluded before git ever sees it.
-data/
 
-# Belt and braces. The entire dataset is JSON, CSV and parquet,
-# so ignore those extensions too as a second safety net. If you
-# later add a config or sample file in one of these formats that
-# you DO want tracked, un-ignore it explicitly, e.g.
-#   !config/sample.json
+# Data
+
+data/
 *.json
 *.csv
 *.parquet
 
-# ============================================================
 # Secrets
-# ------------------------------------------------------------
-# Postgres credentials live in .env, read by docker-compose.
-# The .env stays local. Commit a .env.example with dummy values.
+
 .env
 *.env
 !.env.example
 
-# ============================================================
+
 # Docker local volumes
-# ------------------------------------------------------------
-# Postgres data directory if bind-mounted for persistence.
+
 pgdata/
 postgres-data/
 
-# ============================================================
-# Python glue (any loader or reshape helper scripts)
-# ------------------------------------------------------------
+
+# Python glue
+
 __pycache__/
 *.pyc
 .venv/
 venv/
 
-# ============================================================
+
 # Editor and OS cruft
-# ------------------------------------------------------------
+
 .vscode/
 *.code-workspace
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# ============================================================
+
 # Scratch and logs
-# ------------------------------------------------------------
+
 *.log
 scratch/
+
+# Exports
+
+exports/
