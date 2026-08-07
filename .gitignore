@@ -1,10 +1,12 @@
 
 # Data
 
-data/
+data/*
+!data/sample/
 *.json
 *.csv
 *.parquet
+!data/sample/**/*.json
 
 # Secrets
 

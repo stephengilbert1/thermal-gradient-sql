@@ -54,5 +54,3 @@ SELECT 'temperature_within_physical_bounds',
            ) = 0
            THEN 'PASS' ELSE 'FAIL'
        END
-
-UNION ALL
