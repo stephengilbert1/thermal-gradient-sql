@@ -10,7 +10,6 @@ wide = df.pivot_table(index=['device_serial','interval_15min'], columns='positio
 
 wide['gradient'] = (wide[8] - wide[0]) / 2.0
 result = wide.groupby('device_serial')['gradient'].mean()
-print(result)
 
 expected = {
     '0002180': 1.57,
